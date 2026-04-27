@@ -1,0 +1,60 @@
+# openspec/config.yaml — Proyecto Neto
+schema: spec-driven
+
+project:
+  name: neto
+  type: greenfield
+  description: App de gestión de finanzas personales con IA
+  platforms: [cli, web, mobile]
+  language: es-AR  # Rioplatense Spanish
+
+context: |
+  Stack: Greenfield — stack no definido aún (Supabase o DB local, agente IA, SaaS-like)
+  Plataformas: CLI, Web interactiva, Mobile
+  Arquitectura: Por definir — candidatos: Clean Architecture / Hexagonal
+  Testing: No configurado (greenfield)
+  IA: Agente IA integrado (modelo/proveedor por decidir)
+  BD: Supabase (preferido) o DB local (alternativa)
+
+strict_tdd: false  # No hay test runner aún — habilitar al configurar stack
+
+rules:
+  proposal:
+    - Incluir plan de rollback para cambios riesgosos
+    - Identificar módulos/plataformas afectadas (cli, web, mobile)
+    - Considerar impacto cross-platform
+  specs:
+    - Usar formato Given/When/Then para escenarios
+    - Usar keywords RFC 2119 (MUST, SHALL, SHOULD, MAY)
+    - Escribir en español (Rioplatense)
+  design:
+    - Incluir diagramas de secuencia para flujos complejos
+    - Documentar decisiones de arquitectura con justificación
+    - Considerar separación CLI / Web / Mobile desde el inicio
+  tasks:
+    - Agrupar por fase (infraestructura, implementación, testing)
+    - Usar numeración jerárquica (1.1, 1.2, etc.)
+    - Mantener tareas completables en una sesión
+  apply:
+    - Seguir patrones establecidos en el proyecto
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Advertir antes de mergear deltas destructivos
+
+testing:
+  strict_tdd: false
+  note: "Greenfield — sin test runner configurado. Habilitar strict_tdd al elegir stack."
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage: false
+  quality_tools:
+    linter: false
+    type_checker: false
+    formatter: false

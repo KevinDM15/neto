@@ -1,0 +1,42 @@
+openapi: "3.1.0"
+info:
+  title: Neto API
+  version: "0.1.0"
+  description: |
+    Neto — personal finance manager for Latin America.
+    REST API powered by Go + Chi, backed by Supabase.
+  contact:
+    name: Neto Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok

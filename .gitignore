@@ -1,0 +1,32 @@
+# Binaries
+/api/neto-api
+/tui/neto-tui
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+**/go.sum~
+
+# Node
+node_modules/
+dist/
+.cache/
+*.local
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test coverage
+coverage.html
+coverage.out

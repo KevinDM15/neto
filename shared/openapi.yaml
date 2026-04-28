@@ -21,6 +21,88 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "invalid request body"
+
+    Account:
+      type: object
+      required: [id, name, currency_code, balance, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Cuenta Corriente"
+        currency_code:
+          type: string
+          example: "ARS"
+        balance:
+          type: string
+          description: Decimal string (never float) to avoid precision loss
+          example: "10000.50"
+        created_at:
+          type: string
+          format: date-time
+
+    Transaction:
+      type: object
+      required: [id, account_id, amount, type, idempotency_key, occurred_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: string
+          description: Decimal string
+          example: "1500.00"
+        type:
+          type: string
+          enum: [income, expense, transfer]
+        description:
+          type: string
+        idempotency_key:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Comida"
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        icon:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
 security:
   - BearerAuth: []
 
@@ -40,3 +122,249 @@ paths:
                   status:
                     type: string
                     example: ok
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  /api/v1/accounts:
+    get:
+      summary: List user accounts
+      tags: [accounts]
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a new account
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, currency_code]
+              properties:
+                name:
+                  type: string
+                  example: "Mi billetera"
+                currency_code:
+                  type: string
+                  example: "ARS"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/accounts/{id}:
+    get:
+      summary: Get account by ID
+      tags: [accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/transactions:
+    get:
+      summary: List transactions with optional filters
+      tags: [transactions]
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          description: Start date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: End date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a transaction
+      tags: [transactions]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: Optional idempotency key to prevent duplicate mutations
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, amount, type, idempotency_key]
+              properties:
+                account_id:
+                  type: string
+                  format: uuid
+                category_id:
+                  type: string
+                  format: uuid
+                amount:
+                  type: string
+                  description: Decimal string
+                  example: "500.00"
+                currency_code:
+                  type: string
+                  example: "ARS"
+                type:
+                  type: string
+                  enum: [income, expense, transfer]
+                description:
+                  type: string
+                idempotency_key:
+                  type: string
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/categories:
+    get:
+      summary: List user categories
+      tags: [categories]
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a category
+      tags: [categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                parent_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

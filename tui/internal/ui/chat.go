@@ -121,6 +121,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirm = nil
 				m.appendMsg("assistant", "Acción cancelada.")
 				m.viewport.SetContent(m.viewportContent())
+				m.viewport.Height = m.viewportHeight()
 				m.viewport.GotoBottom()
 			}
 			return m, cmd
@@ -150,10 +151,11 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Reset()
 			m.input.SetHeight(1)
 			m.appendMsg("user", text)
-			m.viewport.SetContent(m.viewportContent())
-			m.viewport.GotoBottom()
 			m.loading = true
 			m.err = ""
+			m.viewport.SetContent(m.viewportContent())
+			m.viewport.Height = m.viewportHeight()
+			m.viewport.GotoBottom()
 			return m, tea.Batch(m.spinner.Tick, m.sendChat(text))
 		}
 
@@ -169,11 +171,13 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirm = &cm
 			m.appendMsg("assistant", msg.resp.Reply)
 			m.viewport.SetContent(m.viewportContent())
+			m.viewport.Height = m.viewportHeight()
 			m.viewport.GotoBottom()
 			return m, cm.Init()
 		}
 		m.appendMsg("assistant", msg.resp.Reply)
 		m.viewport.SetContent(m.viewportContent())
+		m.viewport.Height = m.viewportHeight()
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -212,26 +216,9 @@ func (m ChatModel) View() string {
 		return helpText
 	}
 
-	inputLines := strings.Count(m.input.Value(), "\n") + 1
-	if inputLines > maxInputLines {
-		inputLines = maxInputLines
-	}
-
-	// chrome = header(1) + sep(1) + sep(1) + input(n) + bottom sep(1)
-	// +1 when there is a spinner or error line between the separator and input.
-	chrome := 4 + inputLines
-	if m.loading || m.err != "" {
-		chrome++
-	}
-
-	maxVP := m.height - chrome
-	if maxVP < 1 {
-		maxVP = 1
-	}
-
 	// Only adjust height for this render — do NOT call SetContent or GotoBottom
 	// here, as that would override the scroll offset preserved in Update().
-	m.viewport.Height = maxVP
+	m.viewport.Height = m.viewportHeight()
 
 	var sb strings.Builder
 	sb.WriteString(styledCompactHeader(m.width) + "\n")
@@ -257,7 +244,26 @@ func (m ChatModel) View() string {
 	return sb.String()
 }
 
-// viewportContent returns the string to render inside the viewport.
+// viewportHeight computes the correct viewport height for the current state.
+// Must be called with the same m used for rendering so chrome is consistent.
+func (m *ChatModel) viewportHeight() int {
+	inputLines := strings.Count(m.input.Value(), "\n") + 1
+	if inputLines > maxInputLines {
+		inputLines = maxInputLines
+	}
+	// Rows outside the viewport:
+	//   header(1) + sep(1) + blank(1) + sep(1) + input(n) + blank(1) + bottom-sep(1) = 6 + n
+	//   +1 for the spinner or error line when present
+	chrome := 6 + inputLines
+	if m.loading || m.err != "" {
+		chrome++
+	}
+	h := m.height - chrome
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
 func (m *ChatModel) viewportContent() string {
 	if len(m.messages) == 0 {
 		return m.welcomeView()

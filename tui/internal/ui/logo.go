@@ -25,9 +25,6 @@ var (
 	styleUserMsg = lipgloss.NewStyle().
 			Foreground(colorUser)
 
-	styleAssistantMsg = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FFFFFF"))
-
 	styleError = lipgloss.NewStyle().
 			Foreground(colorError)
 

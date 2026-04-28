@@ -209,7 +209,11 @@ func (m ChatModel) View() string {
 	}
 
 	// chrome = header(1) + sep(1) + sep(1) + input(n) + bottom sep(1)
+	// +1 when there is a spinner or error line between the separator and input.
 	chrome := 4 + inputLines
+	if m.loading || m.err != "" {
+		chrome++
+	}
 	maxVP := m.height - chrome
 	if maxVP < 1 {
 		maxVP = 1

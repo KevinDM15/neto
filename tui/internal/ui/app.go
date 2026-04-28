@@ -132,7 +132,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.client.SetRefreshToken(a.cfg.RefreshToken)
 		a.state = stateChat
 		a.chat = NewChatModel(a.client, a.cfg)
-		return a, a.chat.Init()
+		// Propagate current window size to the newly created chat model so the
+		// viewport height is correct from the first frame (no resize needed).
+		innerW := a.width - 2*paddingX
+		if innerW < 1 {
+			innerW = 80
+		}
+		chatWithSize, sizeCmd := a.chat.Update(tea.WindowSizeMsg{Width: innerW, Height: a.height})
+		a.chat = chatWithSize.(ChatModel)
+		return a, tea.Batch(a.chat.Init(), sizeCmd)
 	}
 
 	// Delegate to active child.

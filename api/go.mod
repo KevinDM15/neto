@@ -1,6 +1,6 @@
 module github.com/neto-app/neto/api
 
-go 1.25.5
+go 1.22
 
 require (
 	github.com/google/uuid v1.6.0 // indirect

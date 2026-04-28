@@ -51,10 +51,6 @@ type ChatModel struct {
 	confirm        *ConfirmModel
 	width          int
 	height         int
-	// vpLines caches the line count of the last viewport content set via
-	// setViewportContent so View() can compute the correct height without
-	// re-rendering markdown on every frame.
-	vpLines int
 }
 
 // NewChatModel creates a new ChatModel.
@@ -106,8 +102,9 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
+		m.viewport.Height = m.viewportHeight()
 		m.input.SetWidth(msg.Width)
-		m.setViewportContent()
+		m.viewport.SetContent(m.viewportContent())
 		return m, nil
 
 	case tea.KeyMsg:
@@ -124,8 +121,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case ConfirmResultNo:
 				m.confirm = nil
 				m.appendMsg("assistant", "Acción cancelada.")
-				m.setViewportContent()
-				m.viewport.Height = m.viewportHeight()
+				m.viewport.SetContent(m.viewportContent())
 				m.viewport.GotoBottom()
 			}
 			return m, cmd
@@ -142,7 +138,6 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = false
 			return m, nil
 		case "alt+enter":
-			// Insertar nueva línea en el textarea.
 			var taCmd tea.Cmd
 			syntheticEnter := tea.KeyMsg{Type: tea.KeyEnter}
 			m.input, taCmd = m.input.Update(syntheticEnter)
@@ -157,8 +152,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendMsg("user", text)
 			m.loading = true
 			m.err = ""
-			m.setViewportContent()
-			m.viewport.Height = m.viewportHeight()
+			m.viewport.SetContent(m.viewportContent())
 			m.viewport.GotoBottom()
 			return m, tea.Batch(m.spinner.Tick, m.sendChat(text))
 		}
@@ -174,14 +168,12 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cm := NewConfirmModel(msg.resp.PendingConfirmation)
 			m.confirm = &cm
 			m.appendMsg("assistant", msg.resp.Reply)
-			m.setViewportContent()
-			m.viewport.Height = m.viewportHeight()
+			m.viewport.SetContent(m.viewportContent())
 			m.viewport.GotoBottom()
 			return m, cm.Init()
 		}
 		m.appendMsg("assistant", msg.resp.Reply)
-		m.setViewportContent()
-		m.viewport.Height = m.viewportHeight()
+		m.viewport.SetContent(m.viewportContent())
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -215,41 +207,45 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
+//
+// Fixed layout (never shifts regardless of loading state):
+//
+//	header\n           1
+//	sep\n              1
+//	viewport           viewportHeight()  ← always fills available space
+//	sep\n              1
+//	status\n           1  ← always 1 row: spinner | error | empty
+//	input              inputLines
+//	\n                 1
+//	sep                1
+//
+// Total chrome = 6 + inputLines (constant for a given input size).
 func (m ChatModel) View() string {
 	if m.showHelp {
 		return helpText
 	}
 
-	maxVP := m.viewportHeight()
-
-	// Shrink the viewport to content size when content is shorter than maxVP.
-	// This keeps the input right below the messages instead of pinning it to
-	// the bottom of the terminal.
-	vpH := m.vpLines
-	if vpH > maxVP {
-		vpH = maxVP
-	}
-	if vpH < 1 {
-		vpH = 1
-	}
-	m.viewport.Height = vpH
+	// Viewport height is constant for given inputLines — no resize on spinner.
+	m.viewport.Height = m.viewportHeight()
 
 	var sb strings.Builder
 	sb.WriteString(styledCompactHeader(m.width) + "\n")
 	sb.WriteString(styledSeparator(m.width) + "\n")
 	sb.WriteString(m.viewport.View())
-	sb.WriteString("\n")
 	sb.WriteString(styledSeparator(m.width) + "\n")
 
+	// Status line — always exactly 1 row so the layout never shifts.
 	if m.confirm != nil {
 		sb.WriteString(m.confirm.View())
 		return sb.String()
 	}
-
-	if m.loading {
-		sb.WriteString(fmt.Sprintf(" %s  \n", m.spinner.View()))
-	} else if m.err != "" {
-		sb.WriteString(styleError.Render(fmt.Sprintf(" ⚠ %s  (Esc para cerrar)", m.err)) + "\n")
+	switch {
+	case m.loading:
+		sb.WriteString(fmt.Sprintf(" %s  pensando...\n", m.spinner.View()))
+	case m.err != "":
+		sb.WriteString(styleError.Render(fmt.Sprintf(" ⚠ %s  (Esc)", m.err)) + "\n")
+	default:
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString(m.input.View())
@@ -258,41 +254,31 @@ func (m ChatModel) View() string {
 	return sb.String()
 }
 
-// viewportHeight computes the correct viewport height for the current state.
-// Must be called with the same m used for rendering so chrome is consistent.
+// viewportHeight returns the number of rows the viewport should occupy.
+// chrome = header(1) + sep(1) + sep(1) + status(1) + input(n) + blank(1) + sep(1) = 6 + n
+// This value is CONSTANT for a given inputLines — it never depends on m.loading.
 func (m *ChatModel) viewportHeight() int {
 	inputLines := strings.Count(m.input.Value(), "\n") + 1
 	if inputLines > maxInputLines {
 		inputLines = maxInputLines
 	}
-	// Rows outside the viewport:
-	//   header(1) + sep(1) + blank(1) + sep(1) + input(n) + blank(1) + bottom-sep(1) = 6 + n
-	//   +1 for the spinner or error line when present
-	chrome := 6 + inputLines
-	if m.loading || m.err != "" {
-		chrome++
-	}
-	h := m.height - chrome
+	h := m.height - 6 - inputLines
 	if h < 1 {
 		h = 1
 	}
 	return h
 }
 
-// setViewportContent renders the current messages into the viewport and
-// caches the line count so View() can size the viewport without re-rendering.
-func (m *ChatModel) setViewportContent() {
-	content := m.viewportContent()
-	m.viewport.SetContent(content)
-	m.vpLines = strings.Count(content, "\n") + 1
-}
-
+// viewportContent builds the message history string rendered inside the viewport.
 func (m *ChatModel) viewportContent() string {
 	if len(m.messages) == 0 {
 		return m.welcomeView()
 	}
 	var sb strings.Builder
-	for _, msg := range m.messages {
+	for i, msg := range m.messages {
+		if i > 0 {
+			sb.WriteString("\n") // blank line between messages
+		}
 		if msg.role == "user" {
 			line := styleUserMsg.Render("> " + msg.content)
 			if m.width > 0 {
@@ -357,7 +343,9 @@ func renderMarkdown(content string, width int) string {
 	if err != nil {
 		return content
 	}
-	return strings.TrimRight(out, "\n")
+	// TrimSpace removes the leading and trailing blank lines glamour adds,
+	// giving a cleaner look consistent with typical terminal chat UIs.
+	return strings.TrimSpace(out)
 }
 
 // welcomeView returns the logo shown at the top when the chat has no messages yet.

@@ -8,28 +8,17 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/neto-app/neto/api/internal/ai"
 	"github.com/neto-app/neto/api/internal/domain/entity"
 	domainrepo "github.com/neto-app/neto/api/internal/domain/repository"
-	"github.com/neto-app/neto/api/internal/infrastructure/anthropic"
 )
-
-// AnthropicRunner define la interfaz del cliente Anthropic que necesita ChatUseCase.
-// Se define aquí para facilitar el mocking en tests.
-type AnthropicRunner interface {
-	RunToolLoop(
-		ctx context.Context,
-		messages []anthropic.Message,
-		tools []anthropic.Tool,
-		executor anthropic.ToolExecutorFunc,
-	) (*anthropic.LoopResult, error)
-}
 
 // ChatRequest agrupa los datos de una solicitud al agente.
 type ChatRequest struct {
 	ConversationID *uuid.UUID
 	Message        string
 	Confirm        bool
-	PendingTool    *anthropic.ContentBlock
+	PendingTool    *ai.ContentBlock
 }
 
 // PendingConfirmationResponse contiene los datos de un tool que requiere confirmación.
@@ -47,23 +36,23 @@ type ChatResponse struct {
 
 // ChatUseCase orquesta el loop de conversación con el agente Neto.
 type ChatUseCase struct {
-	anthropic   AnthropicRunner
+	llm         ai.LLMClient
 	executor    ToolExecutorBuilder
-	tools       []anthropic.Tool
+	tools       []ai.Tool
 	convRepo    domainrepo.AIConversationRepository
 	messageRepo domainrepo.AIMessageRepository
 }
 
 // NewChatUseCase crea un nuevo ChatUseCase.
 func NewChatUseCase(
-	runner AnthropicRunner,
+	llm ai.LLMClient,
 	executor ToolExecutorBuilder,
-	tools []anthropic.Tool,
+	tools []ai.Tool,
 	convRepo domainrepo.AIConversationRepository,
 	messageRepo domainrepo.AIMessageRepository,
 ) *ChatUseCase {
 	return &ChatUseCase{
-		anthropic:   runner,
+		llm:         llm,
 		executor:    executor,
 		tools:       tools,
 		convRepo:    convRepo,
@@ -86,7 +75,7 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 	}
 
 	// Construir el mensaje del usuario
-	var msgs []anthropic.Message
+	var msgs []ai.Message
 
 	// Si hay un pending tool siendo confirmado, reinyectar el estado previo
 	if req.Confirm && req.PendingTool != nil {
@@ -94,7 +83,7 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 		// El pending tool ya está en el historial — continuamos el loop con confirmed=true
 	} else {
 		// Mensaje nuevo del usuario
-		userMsg, err := anthropic.NewTextMessage(anthropic.RoleUser, req.Message)
+		userMsg, err := ai.NewTextMessage(ai.RoleUser, req.Message)
 		if err != nil {
 			return ChatResponse{}, fmt.Errorf("chat: build user message: %w", err)
 		}
@@ -108,7 +97,7 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 
 	// Ejecutar el loop de tool use
 	executorFn := uc.executor.BuildExecutorFunc(userID, req.Confirm)
-	result, err := uc.anthropic.RunToolLoop(ctx, msgs, uc.tools, executorFn)
+	result, err := uc.llm.RunToolLoop(ctx, msgs, uc.tools, executorFn)
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("chat: run tool loop: %w", err)
 	}
@@ -161,20 +150,20 @@ func (uc *ChatUseCase) resolveConversation(ctx context.Context, userID uuid.UUID
 	return conv.ID, nil
 }
 
-// loadHistory carga el historial de mensajes de una conversación como []anthropic.Message.
-func (uc *ChatUseCase) loadHistory(ctx context.Context, convID uuid.UUID) ([]anthropic.Message, error) {
+// loadHistory carga el historial de mensajes de una conversación como []ai.Message.
+func (uc *ChatUseCase) loadHistory(ctx context.Context, convID uuid.UUID) ([]ai.Message, error) {
 	msgs, err := uc.messageRepo.GetByConversationID(ctx, convID)
 	if err != nil {
 		return nil, fmt.Errorf("load history: %w", err)
 	}
 
-	var history []anthropic.Message
+	var history []ai.Message
 	for _, m := range msgs {
-		role := anthropic.RoleUser
+		role := ai.RoleUser
 		if m.Role == entity.AIRoleAssistant || m.Role == entity.AIRoleToolUse {
-			role = anthropic.RoleAssistant
+			role = ai.RoleAssistant
 		}
-		history = append(history, anthropic.Message{Role: role, Content: m.Content})
+		history = append(history, ai.Message{Role: role, Content: m.Content})
 	}
 	return history, nil
 }
@@ -192,12 +181,12 @@ func (uc *ChatUseCase) saveMessage(ctx context.Context, convID uuid.UUID, role e
 }
 
 // persistLoopMessages guarda los mensajes nuevos generados durante el loop.
-func (uc *ChatUseCase) persistLoopMessages(ctx context.Context, convID uuid.UUID, before, after []anthropic.Message) error {
+func (uc *ChatUseCase) persistLoopMessages(ctx context.Context, convID uuid.UUID, before, after []ai.Message) error {
 	// Los mensajes nuevos son los que están en after pero no en before
 	newMsgs := after[len(before):]
 	for _, m := range newMsgs {
 		role := entity.AIRoleUser
-		if m.Role == anthropic.RoleAssistant {
+		if m.Role == ai.RoleAssistant {
 			role = entity.AIRoleAssistant
 		}
 		if err := uc.saveMessage(ctx, convID, role, m.Content); err != nil {

@@ -15,9 +15,11 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/neto-app/neto/api/internal/ai"
 	"github.com/neto-app/neto/api/internal/config"
 	"github.com/neto-app/neto/api/internal/handler"
 	"github.com/neto-app/neto/api/internal/infrastructure/anthropic"
+	"github.com/neto-app/neto/api/internal/infrastructure/openrouter"
 	"github.com/neto-app/neto/api/internal/middleware"
 	"github.com/neto-app/neto/api/internal/repository"
 	"github.com/neto-app/neto/api/internal/usecase"
@@ -61,16 +63,23 @@ func (s *Server) routes() error {
 	transactionUC := usecase.NewTransactionUseCase(repos.Transaction, repos.Account)
 	categoryUC := usecase.NewCategoryUseCase(repos.Category)
 
-	// AI Agent
-	anthropicClient := anthropic.NewClient(s.cfg.AnthropicAPIKey).
-		WithSystemPrompt(netoSystemPrompt())
+	// AI Agent — seleccionar cliente según LLM_PROVIDER
+	var llmClient ai.LLMClient
+	switch s.cfg.LLMProvider {
+	case "anthropic":
+		llmClient = anthropic.NewClient(s.cfg.AnthropicAPIKey).
+			WithSystemPrompt(netoSystemPrompt())
+	default: // "openrouter"
+		llmClient = openrouter.NewClient(s.cfg.OpenRouterKey, s.cfg.LLMModel).
+			WithSystemPrompt(netoSystemPrompt())
+	}
 	toolExecutor := usecase.NewAPIToolExecutor(usecase.UseCases{
 		Transaction: transactionUC,
 		Account:     accountUC,
 		Category:    categoryUC,
 	})
 	chatUC := usecase.NewChatUseCase(
-		anthropicClient,
+		llmClient,
 		toolExecutor,
 		anthropic.ToolCatalog(),
 		repos.AIConversation,

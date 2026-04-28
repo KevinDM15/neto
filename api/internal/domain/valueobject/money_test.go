@@ -3,8 +3,9 @@ package valueobject_test
 import (
 	"testing"
 
-	"github.com/neto-app/neto/api/internal/domain/valueobject"
 	"github.com/shopspring/decimal"
+
+	"github.com/neto-app/neto/api/internal/domain/valueobject"
 )
 
 func TestNewMoney_Valid(t *testing.T) {

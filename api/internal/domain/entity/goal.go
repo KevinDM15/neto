@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/neto-app/neto/api/internal/domain/valueobject"
 	"github.com/shopspring/decimal"
+
+	"github.com/neto-app/neto/api/internal/domain/valueobject"
 )
 
 // Goal representa una meta de ahorro del usuario.

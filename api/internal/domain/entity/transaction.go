@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/neto-app/neto/api/internal/domain/valueobject"
 	"github.com/shopspring/decimal"
+
+	"github.com/neto-app/neto/api/internal/domain/valueobject"
 )
 
 // TransactionType indica si una transacción es ingreso, egreso o transferencia.

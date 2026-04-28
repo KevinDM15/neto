@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/neto-app/neto/api/internal/domain/entity"
 	"github.com/neto-app/neto/api/internal/domain/valueobject"
 )

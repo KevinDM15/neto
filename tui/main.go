@@ -1,3 +1,23 @@
 package main
 
-func main() {}
+import (
+	"fmt"
+	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/neto-app/neto/tui/internal/ui"
+)
+
+func main() {
+	app := ui.NewApp()
+	p := tea.NewProgram(
+		app,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "neto: %v\n", err)
+		os.Exit(1)
+	}
+}

@@ -103,6 +103,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
 		m.input.SetWidth(msg.Width)
+		m.viewport.SetContent(m.viewportContent())
 		return m, nil
 
 	case tea.KeyMsg:
@@ -119,6 +120,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case ConfirmResultNo:
 				m.confirm = nil
 				m.appendMsg("assistant", "Acción cancelada.")
+				m.viewport.SetContent(m.viewportContent())
+				m.viewport.GotoBottom()
 			}
 			return m, cmd
 		}
@@ -147,6 +150,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Reset()
 			m.input.SetHeight(1)
 			m.appendMsg("user", text)
+			m.viewport.SetContent(m.viewportContent())
+			m.viewport.GotoBottom()
 			m.loading = true
 			m.err = ""
 			return m, tea.Batch(m.spinner.Tick, m.sendChat(text))
@@ -163,9 +168,13 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cm := NewConfirmModel(msg.resp.PendingConfirmation)
 			m.confirm = &cm
 			m.appendMsg("assistant", msg.resp.Reply)
+			m.viewport.SetContent(m.viewportContent())
+			m.viewport.GotoBottom()
 			return m, cm.Init()
 		}
 		m.appendMsg("assistant", msg.resp.Reply)
+		m.viewport.SetContent(m.viewportContent())
+		m.viewport.GotoBottom()
 		return m, nil
 
 	case spinner.TickMsg:
@@ -176,7 +185,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Viewport scrolling.
+	// Viewport scrolling — preserves YOffset between renders.
 	var vpCmd tea.Cmd
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
@@ -214,26 +223,15 @@ func (m ChatModel) View() string {
 	if m.loading || m.err != "" {
 		chrome++
 	}
+
 	maxVP := m.height - chrome
 	if maxVP < 1 {
 		maxVP = 1
 	}
 
-	content := m.viewportContent()
-	contentLines := strings.Count(content, "\n") + 1
-	vpHeight := contentLines
-	if vpHeight > maxVP {
-		vpHeight = maxVP
-	}
-	if vpHeight < 1 {
-		vpHeight = 1
-	}
-
-	m.viewport.Height = vpHeight
-	m.viewport.SetContent(content)
-	if len(m.messages) > 0 {
-		m.viewport.GotoBottom()
-	}
+	// Only adjust height for this render — do NOT call SetContent or GotoBottom
+	// here, as that would override the scroll offset preserved in Update().
+	m.viewport.Height = maxVP
 
 	var sb strings.Builder
 	sb.WriteString(styledCompactHeader(m.width) + "\n")

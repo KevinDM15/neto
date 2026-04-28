@@ -5,9 +5,8 @@ linters:
     - errcheck
     - govet
     - staticcheck
-    - unused
-    - gosimple
     - ineffassign
+    - unused
 
 formatters:
   enable:

@@ -1,0 +1,18 @@
+# Variables de entorno locales
+.env
+.env.local
+.env.*.local
+
+# Goose: connection string con credenciales — NUNCA commitear
+migrations/goose.env
+
+# Binarios compilados
+/neto-api
+/bin/
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Go workspace files
+go.work.sum

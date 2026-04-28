@@ -1,4 +1,4 @@
-.PHONY: api tui web dev test lint
+.PHONY: api tui web dev test lint migrate-up migrate-down migrate-status
 
 # Correr la API en modo desarrollo
 api:
@@ -26,3 +26,13 @@ lint:
 	cd api && golangci-lint run ./...
 	cd tui && golangci-lint run ./...
 	cd web && pnpm lint
+
+# Migraciones (requiere GOOSE_DBSTRING exportada o en api/.env)
+migrate-up:
+	cd api && goose -dir migrations postgres "$$GOOSE_DBSTRING" up
+
+migrate-down:
+	cd api && goose -dir migrations postgres "$$GOOSE_DBSTRING" down
+
+migrate-status:
+	cd api && goose -dir migrations postgres "$$GOOSE_DBSTRING" status

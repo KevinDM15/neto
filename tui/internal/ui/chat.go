@@ -6,26 +6,29 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/neto-app/neto/tui/internal/client"
 	"github.com/neto-app/neto/tui/internal/config"
 )
 
 const helpText = `
-Available commands (examples):
-  Gasté 50k en luz          — record an expense
-  Cuánto gasté este mes?    — query spending
-  Mostrar cuentas           — list accounts
-  Cuánto debo?              — check debts
-  Meta de ahorro 100k       — set a savings goal
+Comandos de ejemplo:
+  Gasté 50k en luz          — registrar gasto
+  ¿Cuánto gasté este mes?   — consultar gastos
+  Mostrar cuentas           — listar cuentas
+  ¿Cuánto debo?             — ver deudas
+  Meta de ahorro 100k       — crear meta
 
-Ctrl+H  help  •  Ctrl+Q / Ctrl+C  quit
+Enter envía  •  Alt+Enter nueva línea  •  Ctrl+H ayuda  •  Ctrl+Q salir
 `
+
+// maxInputLines is the maximum number of visible lines in the textarea.
+const maxInputLines = 4
 
 // chatMessage holds a single message in the conversation history.
 type chatMessage struct {
@@ -39,7 +42,7 @@ type ChatModel struct {
 	cfg            *config.Config
 	messages       []chatMessage
 	viewport       viewport.Model
-	input          textinput.Model
+	input          textarea.Model
 	spinner        spinner.Model
 	loading        bool
 	err            string
@@ -52,9 +55,22 @@ type ChatModel struct {
 
 // NewChatModel creates a new ChatModel.
 func NewChatModel(c *client.Client, cfg *config.Config) ChatModel {
-	ti := textinput.New()
-	ti.Placeholder = "Escribe un mensaje…"
-	ti.Focus()
+	ta := textarea.New()
+	ta.Placeholder = "Escribe un mensaje… (Enter envía, Alt+Enter nueva línea)"
+	ta.ShowLineNumbers = false
+	ta.SetHeight(1)
+
+	// Strip all default styling so it inherits the terminal's dark background.
+	noStyle := lipgloss.NewStyle()
+	ta.FocusedStyle.Base = noStyle
+	ta.FocusedStyle.CursorLine = noStyle
+	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
+	ta.BlurredStyle.Base = noStyle
+	ta.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
+
+	ta.Focus()
 
 	vp := viewport.New(80, 20)
 	vp.SetContent("")
@@ -62,7 +78,7 @@ func NewChatModel(c *client.Client, cfg *config.Config) ChatModel {
 	return ChatModel{
 		client:   c,
 		cfg:      cfg,
-		input:    ti,
+		input:    ta,
 		viewport: vp,
 		spinner:  newSpinner(),
 	}
@@ -76,8 +92,7 @@ type chatResponseMsg struct {
 
 // Init implements tea.Model.
 func (m ChatModel) Init() tea.Cmd {
-	m.refreshViewport()
-	return textinput.Blink
+	return textarea.Blink
 }
 
 // Update implements tea.Model.
@@ -87,8 +102,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 8 // header + 2 separators + input + bottom sep + status
-		m.refreshViewport()
+		m.input.SetWidth(msg.Width)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -105,7 +119,6 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case ConfirmResultNo:
 				m.confirm = nil
 				m.appendMsg("assistant", "Acción cancelada.")
-				m.refreshViewport()
 			}
 			return m, cmd
 		}
@@ -120,14 +133,20 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = ""
 			m.showHelp = false
 			return m, nil
+		case "alt+enter":
+			// Insertar nueva línea en el textarea.
+			var taCmd tea.Cmd
+			syntheticEnter := tea.KeyMsg{Type: tea.KeyEnter}
+			m.input, taCmd = m.input.Update(syntheticEnter)
+			return m, taCmd
 		case "enter":
-			if m.loading || m.input.Value() == "" {
+			if m.loading || strings.TrimSpace(m.input.Value()) == "" {
 				return m, nil
 			}
-			text := m.input.Value()
+			text := strings.TrimSpace(m.input.Value())
 			m.input.Reset()
+			m.input.SetHeight(1)
 			m.appendMsg("user", text)
-			m.refreshViewport()
 			m.loading = true
 			m.err = ""
 			return m, tea.Batch(m.spinner.Tick, m.sendChat(text))
@@ -141,15 +160,12 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conversationID = msg.resp.ConversationID
 		if msg.resp.PendingConfirmation != nil {
-			// Show confirmation overlay.
 			cm := NewConfirmModel(msg.resp.PendingConfirmation)
 			m.confirm = &cm
 			m.appendMsg("assistant", msg.resp.Reply)
-			m.refreshViewport()
 			return m, cm.Init()
 		}
 		m.appendMsg("assistant", msg.resp.Reply)
-		m.refreshViewport()
 		return m, nil
 
 	case spinner.TickMsg:
@@ -164,13 +180,21 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var vpCmd tea.Cmd
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
-	// Input.
-	var tiCmd tea.Cmd
+	// Input — grow height as user types, up to maxInputLines.
+	var taCmd tea.Cmd
 	if !m.loading {
-		m.input, tiCmd = m.input.Update(msg)
+		m.input, taCmd = m.input.Update(msg)
+		lines := strings.Count(m.input.Value(), "\n") + 1
+		if lines > maxInputLines {
+			lines = maxInputLines
+		}
+		if lines < 1 {
+			lines = 1
+		}
+		m.input.SetHeight(lines)
 	}
 
-	return m, tea.Batch(vpCmd, tiCmd)
+	return m, tea.Batch(vpCmd, taCmd)
 }
 
 // View implements tea.Model.
@@ -179,14 +203,18 @@ func (m ChatModel) View() string {
 		return helpText
 	}
 
-	// chrome = header + sep + sep + input line + bottom sep
-	const chrome = 5
+	inputLines := strings.Count(m.input.Value(), "\n") + 1
+	if inputLines > maxInputLines {
+		inputLines = maxInputLines
+	}
+
+	// chrome = header(1) + sep(1) + sep(1) + input(n) + bottom sep(1)
+	chrome := 4 + inputLines
 	maxVP := m.height - chrome
 	if maxVP < 1 {
 		maxVP = 1
 	}
 
-	// Count content lines to size viewport dynamically.
 	content := m.viewportContent()
 	contentLines := strings.Count(content, "\n") + 1
 	vpHeight := contentLines
@@ -216,7 +244,7 @@ func (m ChatModel) View() string {
 	}
 
 	if m.loading {
-		sb.WriteString(fmt.Sprintf(" %s  ", m.spinner.View()))
+		sb.WriteString(fmt.Sprintf(" %s  \n", m.spinner.View()))
 	} else if m.err != "" {
 		sb.WriteString(styleError.Render(fmt.Sprintf(" ⚠ %s  (Esc para cerrar)", m.err)) + "\n")
 	}
@@ -308,6 +336,5 @@ func renderMarkdown(content string, width int) string {
 func (m *ChatModel) welcomeView() string {
 	art := lipgloss.NewStyle().Foreground(colorAccent).Render(logo)
 	sub := styleHeaderSub.Render("  personal finance · AI-powered")
-	sep := styledSeparator(m.width)
-	return art + "\n" + sub + "\n" + sep
+	return art + "\n" + sub
 }

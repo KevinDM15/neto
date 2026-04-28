@@ -2,6 +2,9 @@ package ui
 
 import "github.com/charmbracelet/lipgloss"
 
+// paddingX is the horizontal padding applied to the entire app view.
+const paddingX = 2
+
 var (
 	// colorAccent is the brand green used for interactive elements.
 	colorAccent = lipgloss.Color("#00D9A3")

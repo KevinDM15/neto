@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/neto-app/neto/tui/internal/client"
 	"github.com/neto-app/neto/tui/internal/config"
@@ -88,18 +89,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		// propagate to active child
+		// Propagate inner width (descontando padding horizontal).
+		inner := msg
+		inner.Width = msg.Width - 2*paddingX
 		switch a.state {
 		case stateSetup:
-			m, cmd := a.setup.Update(msg)
+			m, cmd := a.setup.Update(inner)
 			a.setup = m.(SetupModel)
 			return a, cmd
 		case stateLogin:
-			m, cmd := a.login.Update(msg)
+			m, cmd := a.login.Update(inner)
 			a.login = m.(LoginModel)
 			return a, cmd
 		case stateChat:
-			m, cmd := a.chat.Update(msg)
+			m, cmd := a.chat.Update(inner)
 			a.chat = m.(ChatModel)
 			return a, cmd
 		}
@@ -144,15 +147,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (a App) View() string {
+	var content string
 	switch a.state {
 	case stateSetup:
-		return a.setup.View()
+		content = a.setup.View()
 	case stateLogin:
-		return a.login.View()
+		content = a.login.View()
 	case stateChat:
-		return a.chat.View()
+		content = a.chat.View()
 	}
-	return ""
+	return lipgloss.NewStyle().PaddingLeft(paddingX).PaddingRight(paddingX).Render(content)
 }
 
 // SetupDoneMsg is emitted by the setup screen when configuration is saved.

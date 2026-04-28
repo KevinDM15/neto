@@ -52,7 +52,11 @@ func NewApp() App {
 		}
 	}
 
-	c := client.New(cfg)
+	c := client.New(cfg, func(accessToken, refreshToken string) error {
+		cfg.AccessToken = accessToken
+		cfg.RefreshToken = refreshToken
+		return config.Save(cfg)
+	})
 	if cfg.AccessToken != "" {
 		return App{
 			state:  stateChat,
@@ -110,7 +114,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SetupDoneMsg:
 		// User finished setup — move to login.
 		a.cfg = msg.Config
-		a.client = client.New(a.cfg)
+		a.client = client.New(a.cfg, func(accessToken, refreshToken string) error {
+			a.cfg.AccessToken = accessToken
+			a.cfg.RefreshToken = refreshToken
+			return config.Save(a.cfg)
+		})
 		a.state = stateLogin
 		a.login = NewLoginModel(a.client, a.cfg)
 		return a, a.login.Init()
@@ -121,6 +129,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.cfg.RefreshToken = msg.RefreshToken
 		_ = config.Save(a.cfg)
 		a.client.SetToken(a.cfg.AccessToken)
+		a.client.SetRefreshToken(a.cfg.RefreshToken)
 		a.state = stateChat
 		a.chat = NewChatModel(a.client, a.cfg)
 		return a, a.chat.Init()

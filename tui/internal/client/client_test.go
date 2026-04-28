@@ -19,7 +19,7 @@ func newTestClient(apiServer, supabaseServer string) *client.Client {
 		SupabaseURL:     supabaseServer,
 		SupabaseAnonKey: "test-anon-key",
 	}
-	return client.New(cfg)
+	return client.New(cfg, nil)
 }
 
 // ── Login ──────────────────────────────────────────────────────────────────

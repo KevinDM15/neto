@@ -23,7 +23,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	srv := server.New(cfg, pool)
+	srv, err := server.New(cfg, pool)
+	if err != nil {
+		log.Fatalf("failed to init server: %v", err)
+	}
 	if err := srv.Run(ctx); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

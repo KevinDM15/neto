@@ -182,6 +182,7 @@ ci: add paths filter to skip unchanged modules
 
 - Go 1.22+
 - Node 20+
+- pnpm 10+: `npm install -g pnpm`
 - [Supabase CLI](https://supabase.com/docs/guides/cli)
 - [goose](https://github.com/pressly/goose): `go install github.com/pressly/goose/v3/cmd/goose@latest`
 - [golangci-lint](https://golangci-lint.run): `brew install golangci-lint`
@@ -200,7 +201,7 @@ cp api/.env.example api/.env
 cd api && goose -dir migrations postgres "$DATABASE_URL" up
 
 # 4. Install web dependencies
-cd ../web && npm install
+cd ../web && pnpm install
 
 # 5. Start everything
 make dev

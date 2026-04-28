@@ -88,29 +88,35 @@ jobs:
             src:
               - 'web/**'
 
+      - name: Set up pnpm
+        if: steps.changes.outputs.src == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Set up Node
         if: steps.changes.outputs.src == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install dependencies
         if: steps.changes.outputs.src == 'true'
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: ESLint
         if: steps.changes.outputs.src == 'true'
-        run: npm run lint
+        run: pnpm lint
 
       - name: TypeScript type-check
         if: steps.changes.outputs.src == 'true'
-        run: npm run type-check
+        run: pnpm type-check
 
       - name: Build
         if: steps.changes.outputs.src == 'true'
-        run: npm run build
+        run: pnpm build
 
       - name: No changes detected — skipping
         if: steps.changes.outputs.src == 'false'

@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/neto-app/neto/tui/internal/client"
@@ -74,6 +76,7 @@ type chatResponseMsg struct {
 
 // Init implements tea.Model.
 func (m ChatModel) Init() tea.Cmd {
+	m.refreshViewport()
 	return textinput.Blink
 }
 
@@ -84,7 +87,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 4 // leave room for input + status
+		m.viewport.Height = msg.Height - 8 // header + 2 separators + input + bottom sep + status
 		m.refreshViewport()
 		return m, nil
 
@@ -176,9 +179,36 @@ func (m ChatModel) View() string {
 		return helpText
 	}
 
+	// chrome = header + sep + sep + input line + bottom sep
+	const chrome = 5
+	maxVP := m.height - chrome
+	if maxVP < 1 {
+		maxVP = 1
+	}
+
+	// Count content lines to size viewport dynamically.
+	content := m.viewportContent()
+	contentLines := strings.Count(content, "\n") + 1
+	vpHeight := contentLines
+	if vpHeight > maxVP {
+		vpHeight = maxVP
+	}
+	if vpHeight < 1 {
+		vpHeight = 1
+	}
+
+	m.viewport.Height = vpHeight
+	m.viewport.SetContent(content)
+	if len(m.messages) > 0 {
+		m.viewport.GotoBottom()
+	}
+
 	var sb strings.Builder
+	sb.WriteString(styledCompactHeader(m.width) + "\n")
+	sb.WriteString(styledSeparator(m.width) + "\n")
 	sb.WriteString(m.viewport.View())
 	sb.WriteString("\n")
+	sb.WriteString(styledSeparator(m.width) + "\n")
 
 	if m.confirm != nil {
 		sb.WriteString(m.confirm.View())
@@ -188,10 +218,37 @@ func (m ChatModel) View() string {
 	if m.loading {
 		sb.WriteString(fmt.Sprintf(" %s  ", m.spinner.View()))
 	} else if m.err != "" {
-		sb.WriteString(fmt.Sprintf(" ⚠ %s  (Esc para cerrar)\n", m.err))
+		sb.WriteString(styleError.Render(fmt.Sprintf(" ⚠ %s  (Esc para cerrar)", m.err)) + "\n")
 	}
 
 	sb.WriteString(m.input.View())
+	sb.WriteString("\n")
+	sb.WriteString(styledSeparator(m.width))
+	return sb.String()
+}
+
+// viewportContent returns the string to render inside the viewport.
+func (m *ChatModel) viewportContent() string {
+	if len(m.messages) == 0 {
+		return m.welcomeView()
+	}
+	var sb strings.Builder
+	for _, msg := range m.messages {
+		if msg.role == "user" {
+			line := styleUserMsg.Render("> " + msg.content)
+			if m.width > 0 {
+				pad := m.width - lipgloss.Width(line) - 1
+				if pad < 0 {
+					pad = 0
+				}
+				sb.WriteString(strings.Repeat(" ", pad) + line + "\n")
+			} else {
+				sb.WriteString(line + "\n")
+			}
+		} else {
+			sb.WriteString(renderMarkdown(msg.content, m.width) + "\n")
+		}
+	}
 	return sb.String()
 }
 
@@ -227,26 +284,30 @@ func (m *ChatModel) appendMsg(role, content string) {
 	m.messages = append(m.messages, chatMessage{role: role, content: content})
 }
 
-// refreshViewport rebuilds the viewport content from the message list.
-func (m *ChatModel) refreshViewport() {
-	var sb strings.Builder
-	for _, msg := range m.messages {
-		if msg.role == "user" {
-			line := "> " + msg.content
-			if m.width > 0 {
-				// Right-align user messages by padding.
-				pad := m.width - len(line)
-				if pad < 0 {
-					pad = 0
-				}
-				sb.WriteString(strings.Repeat(" ", pad) + line + "\n")
-			} else {
-				sb.WriteString(line + "\n")
-			}
-		} else {
-			sb.WriteString(msg.content + "\n")
-		}
+// refreshViewport is a no-op; View() recalculates content on every render.
+func (m *ChatModel) refreshViewport() {}
+
+// renderMarkdown renders markdown text for terminal display.
+// Falls back to plain text if glamour fails.
+func renderMarkdown(content string, width int) string {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStylePath("dark"),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		return content
 	}
-	m.viewport.SetContent(sb.String())
-	m.viewport.GotoBottom()
+	out, err := r.Render(content)
+	if err != nil {
+		return content
+	}
+	return strings.TrimRight(out, "\n")
+}
+
+// welcomeView returns the logo shown at the top when the chat has no messages yet.
+func (m *ChatModel) welcomeView() string {
+	art := lipgloss.NewStyle().Foreground(colorAccent).Render(logo)
+	sub := styleHeaderSub.Render("  personal finance · AI-powered")
+	sep := styledSeparator(m.width)
+	return art + "\n" + sub + "\n" + sep
 }

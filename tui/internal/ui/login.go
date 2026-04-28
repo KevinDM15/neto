@@ -130,15 +130,15 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 func (m LoginModel) View() string {
 	if m.loading {
-		return fmt.Sprintf("\n  %s Logging in…\n", m.spinner.View())
+		return fmt.Sprintf("\n  %s Iniciando sesión…\n", m.spinner.View())
 	}
 
-	s := "Neto — Login\n\n"
-	s += "Email:\n" + m.email.View() + "\n\n"
-	s += "Password:\n" + m.password.View() + "\n\n"
+	s := styledLogo() + "\n\n"
+	s += styleLabel.Render("Email:") + "\n" + m.email.View() + "\n\n"
+	s += styleLabel.Render("Password:") + "\n" + m.password.View() + "\n\n"
 	if m.err != "" {
-		s += "Error: " + m.err + "\n\n"
+		s += styleError.Render("⚠ "+m.err) + "\n\n"
 	}
-	s += "Tab/↓ next field • Enter submit • Ctrl+C quit"
+	s += styleHint.Render("Tab/↓ campo siguiente  •  Enter confirmar  •  Ctrl+C salir")
 	return s
 }

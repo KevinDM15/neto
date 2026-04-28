@@ -17,6 +17,7 @@ import (
 
 	"github.com/neto-app/neto/api/internal/config"
 	"github.com/neto-app/neto/api/internal/handler"
+	"github.com/neto-app/neto/api/internal/infrastructure/anthropic"
 	"github.com/neto-app/neto/api/internal/middleware"
 	"github.com/neto-app/neto/api/internal/repository"
 	"github.com/neto-app/neto/api/internal/usecase"
@@ -57,11 +58,28 @@ func (s *Server) routes() {
 	transactionUC := usecase.NewTransactionUseCase(repos.Transaction, repos.Account)
 	categoryUC := usecase.NewCategoryUseCase(repos.Category)
 
+	// AI Agent
+	anthropicClient := anthropic.NewClient(s.cfg.AnthropicAPIKey).
+		WithSystemPrompt(netoSystemPrompt())
+	toolExecutor := usecase.NewAPIToolExecutor(usecase.UseCases{
+		Transaction: transactionUC,
+		Account:     accountUC,
+		Category:    categoryUC,
+	})
+	chatUC := usecase.NewChatUseCase(
+		anthropicClient,
+		toolExecutor,
+		anthropic.ToolCatalog(),
+		repos.AIConversation,
+		repos.AIMessage,
+	)
+
 	// Handlers
 	healthH := handler.NewHealthHandler()
 	accountH := handler.NewAccountHandler(accountUC)
 	transactionH := handler.NewTransactionHandler(transactionUC)
 	categoryH := handler.NewCategoryHandler(categoryUC)
+	chatH := handler.NewChatHandler(chatUC)
 
 	// Ruta pública
 	s.mux.Get("/health", healthH.Health)
@@ -83,8 +101,34 @@ func (s *Server) routes() {
 			// Categories
 			r.Post("/categories", categoryH.Create)
 			r.Get("/categories", categoryH.List)
+
+			// Chat — agente de IA
+			r.With(middleware.Idempotency(s.pool)).Post("/chat", chatH.Chat)
 		})
 	})
+}
+
+// netoSystemPrompt retorna el system prompt del agente Neto en español.
+func netoSystemPrompt() string {
+	return `Sos Neto, un asistente financiero personal en español rioplatense. 
+Ayudás a los usuarios a registrar y analizar sus finanzas personales.
+
+Tus capacidades incluyen:
+- Registrar ingresos y egresos
+- Consultar saldos de cuentas
+- Listar y filtrar transacciones
+- Ver resúmenes mensuales
+- Registrar deudas (a pagar o cobrar)
+- Crear cuentas bancarias o billeteras
+- Seguir el progreso de metas de ahorro
+
+Reglas importantes:
+- Siempre respondé en español rioplatense (voseo).
+- Antes de ejecutar operaciones destructivas o de creación, pedí confirmación.
+- Cuando el usuario mencione un gasto o ingreso sin especificar la cuenta, preguntá cuál cuenta usar si hay más de una.
+- Usá los tools disponibles para leer datos reales del usuario antes de dar resúmenes.
+- Formateá los montos con separadores de miles y símbolo de moneda.
+- Sé conciso y amigable.`
 }
 
 // Run levanta el servidor HTTP y maneja graceful shutdown.

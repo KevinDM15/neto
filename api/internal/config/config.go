@@ -15,6 +15,15 @@ type Config struct {
 	DatabaseURL     string
 	SupabaseURL     string
 	SupabaseAnonKey string
+	// LLMProvider selecciona el proveedor de LLM: "anthropic" | "openrouter".
+	// Default: "openrouter".
+	LLMProvider string
+	// LLMModel es el modelo a usar según el proveedor.
+	// Default: "google/gemini-2.0-flash-exp:free" (openrouter).
+	LLMModel string
+	// OpenRouterKey es la API key de OpenRouter (requerida si LLMProvider=openrouter).
+	OpenRouterKey string
+	// AnthropicAPIKey es la API key de Anthropic (requerida si LLMProvider=anthropic).
 	AnthropicAPIKey string
 }
 
@@ -37,6 +46,9 @@ func Load() (Config, error) {
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		SupabaseURL:     os.Getenv("SUPABASE_URL"),
 		SupabaseAnonKey: os.Getenv("SUPABASE_ANON_KEY"),
+		LLMProvider:     getEnv("LLM_PROVIDER", "openrouter"),
+		LLMModel:        getEnv("LLM_MODEL", "google/gemini-2.0-flash-exp:free"),
+		OpenRouterKey:   os.Getenv("OPENROUTER_API_KEY"),
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 	}
 
@@ -53,12 +65,23 @@ func (c Config) validate() error {
 		"DATABASE_URL":      c.DatabaseURL,
 		"SUPABASE_URL":      c.SupabaseURL,
 		"SUPABASE_ANON_KEY": c.SupabaseAnonKey,
-		"ANTHROPIC_API_KEY": c.AnthropicAPIKey,
 	}
 
 	for name, val := range required {
 		if val == "" {
 			return fmt.Errorf("required environment variable %s is not set", name)
+		}
+	}
+
+	// Validar la API key del proveedor seleccionado
+	switch c.LLMProvider {
+	case "anthropic":
+		if c.AnthropicAPIKey == "" {
+			return fmt.Errorf("required environment variable ANTHROPIC_API_KEY is not set (LLM_PROVIDER=anthropic)")
+		}
+	default: // "openrouter"
+		if c.OpenRouterKey == "" {
+			return fmt.Errorf("required environment variable OPENROUTER_API_KEY is not set (LLM_PROVIDER=openrouter)")
 		}
 	}
 

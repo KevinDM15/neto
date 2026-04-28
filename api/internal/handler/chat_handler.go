@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/neto-app/neto/api/internal/infrastructure/anthropic"
+	"github.com/neto-app/neto/api/internal/ai"
 	"github.com/neto-app/neto/api/internal/middleware"
 	"github.com/neto-app/neto/api/internal/usecase"
 )
@@ -29,10 +29,10 @@ func NewChatHandler(uc chatUseCase) *ChatHandler {
 
 // chatRequest es el body esperado en POST /api/v1/chat.
 type chatRequest struct {
-	ConversationID *string                 `json:"conversation_id"`
-	Message        string                  `json:"message"`
-	Confirm        bool                    `json:"confirm"`
-	PendingTool    *anthropic.ContentBlock `json:"pending_tool"`
+	ConversationID *string          `json:"conversation_id"`
+	Message        string           `json:"message"`
+	Confirm        bool             `json:"confirm"`
+	PendingTool    *ai.ContentBlock `json:"pending_tool"`
 }
 
 // chatResponse es la respuesta del endpoint de chat.

@@ -1,6 +1,10 @@
 package anthropic
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/neto-app/neto/api/internal/ai"
+)
 
 // toolSchema construye un JSON Schema básico para los inputs de los tools.
 func mustRawJSON(v interface{}) json.RawMessage {
@@ -23,8 +27,8 @@ func RequiresConfirmation(toolName string) bool {
 }
 
 // ToolCatalog retorna el catálogo completo de tools disponibles para el agente Neto.
-func ToolCatalog() []Tool {
-	return []Tool{
+func ToolCatalog() []ai.Tool {
+	return []ai.Tool{
 		{
 			Name:        "create_transaction",
 			Description: "Registra un nuevo movimiento de dinero (ingreso o egreso) en una cuenta del usuario. Requiere confirmación antes de ejecutarse.",

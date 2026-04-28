@@ -8,13 +8,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/neto-app/neto/api/internal/ai"
 	domainrepo "github.com/neto-app/neto/api/internal/domain/repository"
-	"github.com/neto-app/neto/api/internal/infrastructure/anthropic"
 )
 
-// ToolExecutorBuilder construye la función ejecutora de tools para el loop de Anthropic.
+// ToolExecutorBuilder construye la función ejecutora de tools para el loop del LLM.
 type ToolExecutorBuilder interface {
-	BuildExecutorFunc(userID uuid.UUID, confirmed bool) anthropic.ToolExecutorFunc
+	BuildExecutorFunc(userID uuid.UUID, confirmed bool) ai.ToolExecutorFunc
 }
 
 // UseCases agrupa los use cases disponibles para el executor de tools.
@@ -34,11 +34,22 @@ func NewAPIToolExecutor(uc UseCases) *APIToolExecutor {
 	return &APIToolExecutor{uc: uc}
 }
 
-// BuildExecutorFunc construye la ToolExecutorFunc para el loop de Anthropic.
+// requiresConfirmation retorna true si el tool dado requiere confirmación del usuario
+// antes de ejecutarse. Esta lógica es de dominio de la aplicación, no de infraestructura.
+func requiresConfirmation(toolName string) bool {
+	switch toolName {
+	case "create_transaction", "create_account", "record_debt", "delete_transaction":
+		return true
+	default:
+		return false
+	}
+}
+
+// BuildExecutorFunc construye la ToolExecutorFunc para el loop del LLM.
 // confirmed=true significa que el usuario ya aprobó las mutaciones pendientes.
-func (e *APIToolExecutor) BuildExecutorFunc(userID uuid.UUID, confirmed bool) anthropic.ToolExecutorFunc {
-	return func(ctx context.Context, block *anthropic.ContentBlock) (json.RawMessage, bool, error) {
-		if anthropic.RequiresConfirmation(block.Name) && !confirmed {
+func (e *APIToolExecutor) BuildExecutorFunc(userID uuid.UUID, confirmed bool) ai.ToolExecutorFunc {
+	return func(ctx context.Context, block *ai.ContentBlock) (json.RawMessage, bool, error) {
+		if requiresConfirmation(block.Name) && !confirmed {
 			return nil, true, nil
 		}
 		return e.dispatch(ctx, block, userID)
@@ -46,7 +57,7 @@ func (e *APIToolExecutor) BuildExecutorFunc(userID uuid.UUID, confirmed bool) an
 }
 
 // dispatch despacha la ejecución del tool al use case correspondiente.
-func (e *APIToolExecutor) dispatch(ctx context.Context, block *anthropic.ContentBlock, userID uuid.UUID) (json.RawMessage, bool, error) {
+func (e *APIToolExecutor) dispatch(ctx context.Context, block *ai.ContentBlock, userID uuid.UUID) (json.RawMessage, bool, error) {
 	switch block.Name {
 	case "list_transactions":
 		r, err := e.listTransactions(ctx, block.Input, userID)

@@ -55,3 +55,8 @@ func (m Money) IsZero() bool {
 func (m Money) String() string {
 	return fmt.Sprintf("%s %s", m.Amount.String(), m.CurrencyCode)
 }
+
+// ZeroDecimal retorna un decimal en cero. Útil en tests y constructores.
+func ZeroDecimal() decimal.Decimal {
+	return decimal.Zero
+}

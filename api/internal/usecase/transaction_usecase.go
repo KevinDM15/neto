@@ -82,3 +82,30 @@ func (uc *TransactionUseCase) ListTransactions(ctx context.Context, userID uuid.
 	}
 	return transactions, nil
 }
+
+// DeleteTransaction elimina una transacción verificando que pertenezca al usuario.
+func (uc *TransactionUseCase) DeleteTransaction(ctx context.Context, userID uuid.UUID, transactionID uuid.UUID) error {
+	tx, err := uc.transactions.GetByID(ctx, transactionID)
+	if err != nil {
+		return fmt.Errorf("usecase: get transaction for delete: %w", err)
+	}
+	if tx.UserID != userID {
+		return fmt.Errorf("usecase: transaction does not belong to user")
+	}
+	if err := uc.transactions.Delete(ctx, transactionID); err != nil {
+		return fmt.Errorf("usecase: delete transaction: %w", err)
+	}
+	return nil
+}
+
+// TransactionTypeFromString convierte un string al tipo TransactionType correspondiente.
+func TransactionTypeFromString(s string) entity.TransactionType {
+	switch s {
+	case "income":
+		return entity.Income
+	case "transfer":
+		return entity.Transfer
+	default:
+		return entity.Expense
+	}
+}

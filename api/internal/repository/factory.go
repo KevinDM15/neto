@@ -7,18 +7,22 @@ import (
 
 // Repositories agrupa todos los repositorios de la aplicación.
 type Repositories struct {
-	Account     *AccountRepository
-	Category    *CategoryRepository
-	Transaction *TransactionRepository
-	Currency    *CurrencyRepository
+	Account        *AccountRepository
+	Category       *CategoryRepository
+	Transaction    *TransactionRepository
+	Currency       *CurrencyRepository
+	AIConversation *AIConversationRepository
+	AIMessage      *AIMessageRepository
 }
 
 // NewRepositories instancia todos los repositorios con el pool dado.
 func NewRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
-		Account:     newAccountRepository(pool),
-		Category:    newCategoryRepository(pool),
-		Transaction: newTransactionRepository(pool),
-		Currency:    newCurrencyRepository(pool),
+		Account:        newAccountRepository(pool),
+		Category:       newCategoryRepository(pool),
+		Transaction:    newTransactionRepository(pool),
+		Currency:       newCurrencyRepository(pool),
+		AIConversation: newAIConversationRepository(pool),
+		AIMessage:      newAIMessageRepository(pool),
 	}
 }

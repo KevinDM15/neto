@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/neto-app/neto/tui/internal/client"
 	"github.com/neto-app/neto/tui/internal/config"
@@ -311,9 +311,6 @@ func (m ChatModel) sendConfirm(pending *client.PendingConfirmation) tea.Cmd {
 func (m *ChatModel) appendMsg(role, content string) {
 	m.messages = append(m.messages, chatMessage{role: role, content: content})
 }
-
-// refreshViewport is a no-op; View() recalculates content on every render.
-func (m *ChatModel) refreshViewport() {}
 
 // renderMarkdown renders markdown text for terminal display.
 // Falls back to plain text if glamour fails.

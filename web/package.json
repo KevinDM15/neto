@@ -1,6 +1,7 @@
 {
   "name": "@neto-app/web",
   "version": "0.0.1",
+  "type": "module",
   "private": true,
   "description": "Neto web client — Vite + React + TypeScript",
   "scripts": {
@@ -24,6 +25,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^17.5.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }

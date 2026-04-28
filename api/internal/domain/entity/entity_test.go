@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 	"github.com/neto-app/neto/api/internal/domain/entity"
 	"github.com/neto-app/neto/api/internal/domain/valueobject"
+	"github.com/shopspring/decimal"
 )
 
 // ---- Account ----

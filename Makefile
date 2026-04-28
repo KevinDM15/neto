@@ -10,7 +10,7 @@ tui:
 
 # Correr el cliente web (Vite dev server)
 web:
-	cd web && npm run dev
+	cd web && pnpm dev
 
 # Levantar todo en paralelo (requiere make ≥ 4.3 con --jobs)
 dev:
@@ -25,4 +25,4 @@ test:
 lint:
 	cd api && golangci-lint run ./...
 	cd tui && golangci-lint run ./...
-	cd web && npm run lint
+	cd web && pnpm lint

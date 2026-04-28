@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  go-check:
+    name: Go (${{ matrix.module }}) — Lint, Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        module:
+          - api
+          - tui
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect changes in ${{ matrix.module }}/
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            src:
+              - '${{ matrix.module }}/**'
+
+      - name: Set up Go
+        if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Run go vet
+        if: steps.changes.outputs.src == 'true'
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        if: steps.changes.outputs.src == 'true'
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: ${{ matrix.module }}
+
+      - name: Build
+        if: steps.changes.outputs.src == 'true'
+        run: go build ./...
+
+      - name: Test (with race detector)
+        if: steps.changes.outputs.src == 'true'
+        run: |
+          TEST_FILES=$(find . -name '*_test.go' | wc -l | tr -d ' ')
+          if [ "$TEST_FILES" -gt "0" ]; then
+            go test ./... -race -count=1
+          else
+            echo "No test files found in ${{ matrix.module }}/ — skipping gracefully"
+          fi
+
+      - name: No changes detected — skipping
+        if: steps.changes.outputs.src == 'false'
+        run: echo "No changes in ${{ matrix.module }}/ — all checks skipped"
+
+  web-check:
+    name: Web — Lint, Type-Check & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect changes in web/
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            src:
+              - 'web/**'
+
+      - name: Set up pnpm
+        if: steps.changes.outputs.src == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: steps.changes.outputs.src == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        if: steps.changes.outputs.src == 'true'
+        run: pnpm lint
+
+      - name: TypeScript type-check
+        if: steps.changes.outputs.src == 'true'
+        run: pnpm type-check
+
+      - name: Build
+        if: steps.changes.outputs.src == 'true'
+        run: pnpm build
+
+      - name: No changes detected — skipping
+        if: steps.changes.outputs.src == 'false'
+        run: echo "No changes in web/ — all checks skipped"

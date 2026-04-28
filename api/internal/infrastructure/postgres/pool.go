@@ -17,8 +17,8 @@ func NewPool(ctx context.Context, connString string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parsing postgres connection string: %w", err)
 	}
 
-	cfg.MaxConns = 25
-	cfg.MinConns = 5
+	cfg.MaxConns = 10
+	cfg.MinConns = 1
 	cfg.MaxConnLifetime = 1 * time.Hour
 	cfg.MaxConnIdleTime = 30 * time.Minute
 	cfg.HealthCheckPeriod = 1 * time.Minute
@@ -28,7 +28,6 @@ func NewPool(ctx context.Context, connString string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("creating pgxpool: %w", err)
 	}
 
-	// Verificar conectividad antes de retornar
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("pinging postgres: %w", err)

@@ -31,18 +31,21 @@ type Server struct {
 }
 
 // New crea un nuevo Server con el pool de DB ya inicializado.
-func New(cfg config.Config, pool *pgxpool.Pool) *Server {
+// Retorna error si no puede alcanzar el JWKS endpoint de Supabase.
+func New(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	s := &Server{
 		mux:  chi.NewMux(),
 		cfg:  cfg,
 		pool: pool,
 	}
-	s.routes()
-	return s
+	if err := s.routes(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // routes registra todos los middlewares globales y las rutas de la API.
-func (s *Server) routes() {
+func (s *Server) routes() error {
 	// Middlewares globales
 	s.mux.Use(chimiddleware.RequestID)
 	s.mux.Use(chimiddleware.RealIP)
@@ -81,12 +84,18 @@ func (s *Server) routes() {
 	categoryH := handler.NewCategoryHandler(categoryUC)
 	chatH := handler.NewChatHandler(chatUC)
 
+	// Auth middleware via JWKS (soporta HS256 legacy y ECC P-256)
+	authMiddleware, err := middleware.JWKSAuthenticator(s.cfg.JWKSUrl())
+	if err != nil {
+		return fmt.Errorf("init JWKS authenticator: %w", err)
+	}
+
 	// Ruta pública
 	s.mux.Get("/health", healthH.Health)
 
 	// Rutas protegidas por JWT
 	s.mux.Group(func(r chi.Router) {
-		r.Use(middleware.Authenticator(s.cfg.SupabaseJWTSecret))
+		r.Use(authMiddleware)
 
 		r.Route("/api/v1", func(r chi.Router) {
 			// Accounts
@@ -106,6 +115,8 @@ func (s *Server) routes() {
 			r.With(middleware.Idempotency(s.pool)).Post("/chat", chatH.Chat)
 		})
 	})
+
+	return nil
 }
 
 // netoSystemPrompt retorna el system prompt del agente Neto en español.

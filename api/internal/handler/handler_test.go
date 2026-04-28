@@ -27,7 +27,7 @@ type mockAccountUseCase struct {
 	err      error
 }
 
-func (m *mockAccountUseCase) CreateAccount(_ context.Context, _ uuid.UUID, name, currencyCode string) (entity.Account, error) {
+func (m *mockAccountUseCase) CreateAccount(_ context.Context, _ uuid.UUID, _, _ string) (entity.Account, error) {
 	return m.account, m.err
 }
 
@@ -53,15 +53,23 @@ func (m *mockTransactionUseCase) ListTransactions(_ context.Context, _ uuid.UUID
 	return m.transactions, m.err
 }
 
-// --- Helper para inyectar userID en contexto ---
-
-func withUser(r *http.Request, userID uuid.UUID) *http.Request {
-	ctx := context.WithValue(r.Context(), ctxKey("userID"), userID)
-	return r.WithContext(ctx)
+// buildAccount construye un Account de prueba con saldo cero.
+func buildAccount(userID uuid.UUID) entity.Account {
+	money, _ := valueobject.NewMoney(valueobject.ZeroDecimal(), "ARS")
+	return entity.Account{
+		ID:           uuid.New(),
+		UserID:       userID,
+		Name:         "Test",
+		CurrencyCode: "ARS",
+		Balance:      money,
+	}
 }
 
-// ctxKey es una key de contexto local para tests.
-type ctxKey string
+// withUserCtx inyecta el userID en el contexto usando la key del middleware.
+func withUserCtx(r *http.Request, userID uuid.UUID) *http.Request {
+	ctx := context.WithValue(r.Context(), middleware.UserIDCtxKey(), userID)
+	return r.WithContext(ctx)
+}
 
 // --- Tests ---
 
@@ -86,7 +94,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestAuthMiddleware_NoToken_Returns401(t *testing.T) {
-	protected := middleware.Authenticator("test-secret")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	protected := middleware.Authenticator("test-secret")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -123,9 +131,56 @@ func TestAccountHandler_List_RetornaSliceVacio(t *testing.T) {
 	h := handler.NewAccountHandler(uc)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
-	// Inyectamos el userID usando la función del middleware
-	ctx := context.WithValue(r.Context(), middleware.UserIDCtxKey(), userID)
-	r = r.WithContext(ctx)
+	r = withUserCtx(r, userID)
+
+	w := httptest.NewRecorder()
+	h.List(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestAccountHandler_List_RetornaCuentas(t *testing.T) {
+	userID := uuid.New()
+	acc := buildAccount(userID)
+	uc := &mockAccountUseCase{accounts: []entity.Account{acc}}
+
+	h := handler.NewAccountHandler(uc)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
+	r = withUserCtx(r, userID)
+
+	w := httptest.NewRecorder()
+	h.List(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestTransactionHandler_List_RequiresAuth(t *testing.T) {
+	uc := &mockTransactionUseCase{}
+	h := handler.NewTransactionHandler(uc)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestTransactionHandler_List_RetornaSliceVacio(t *testing.T) {
+	userID := uuid.New()
+	uc := &mockTransactionUseCase{transactions: []entity.Transaction{}}
+
+	h := handler.NewTransactionHandler(uc)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil)
+	r = withUserCtx(r, userID)
 
 	w := httptest.NewRecorder()
 	h.List(w, r)
@@ -137,33 +192,20 @@ func TestAccountHandler_List_RetornaSliceVacio(t *testing.T) {
 
 func TestIdempotencyMiddleware_SinHeader_Pasa(t *testing.T) {
 	called := false
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusCreated)
 	})
 
-	// Sin pool real — pasamos nil porque sin header no debería usarlo
 	mux := chi.NewMux()
 	mux.Post("/test", inner)
 
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
-	// Sin header Idempotency-Key → el middleware no debería intentar DB
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, r)
 
 	if !called {
 		t.Error("expected inner handler to be called")
-	}
-}
-
-func buildAccount(userID uuid.UUID) entity.Account {
-	money, _ := valueobject.NewMoney(valueobject.ZeroDecimal(), "ARS")
-	return entity.Account{
-		ID:           uuid.New(),
-		UserID:       userID,
-		Name:         "Test",
-		CurrencyCode: "ARS",
-		Balance:      money,
 	}
 }

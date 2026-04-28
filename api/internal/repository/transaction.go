@@ -103,7 +103,6 @@ func (r *TransactionRepository) GetByUserID(ctx context.Context, userID uuid.UUI
 	if filter.To != nil {
 		conditions = append(conditions, fmt.Sprintf("occurred_at <= $%d", idx))
 		args = append(args, *filter.To)
-		idx++
 	}
 
 	limit := 50

@@ -51,6 +51,10 @@ type ChatModel struct {
 	confirm        *ConfirmModel
 	width          int
 	height         int
+	// vpLines caches the line count of the last viewport content set via
+	// setViewportContent so View() can compute the correct height without
+	// re-rendering markdown on every frame.
+	vpLines int
 }
 
 // NewChatModel creates a new ChatModel.
@@ -103,7 +107,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
 		m.input.SetWidth(msg.Width)
-		m.viewport.SetContent(m.viewportContent())
+		m.setViewportContent()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -120,7 +124,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case ConfirmResultNo:
 				m.confirm = nil
 				m.appendMsg("assistant", "Acción cancelada.")
-				m.viewport.SetContent(m.viewportContent())
+				m.setViewportContent()
 				m.viewport.Height = m.viewportHeight()
 				m.viewport.GotoBottom()
 			}
@@ -153,7 +157,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendMsg("user", text)
 			m.loading = true
 			m.err = ""
-			m.viewport.SetContent(m.viewportContent())
+			m.setViewportContent()
 			m.viewport.Height = m.viewportHeight()
 			m.viewport.GotoBottom()
 			return m, tea.Batch(m.spinner.Tick, m.sendChat(text))
@@ -170,13 +174,13 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cm := NewConfirmModel(msg.resp.PendingConfirmation)
 			m.confirm = &cm
 			m.appendMsg("assistant", msg.resp.Reply)
-			m.viewport.SetContent(m.viewportContent())
+			m.setViewportContent()
 			m.viewport.Height = m.viewportHeight()
 			m.viewport.GotoBottom()
 			return m, cm.Init()
 		}
 		m.appendMsg("assistant", msg.resp.Reply)
-		m.viewport.SetContent(m.viewportContent())
+		m.setViewportContent()
 		m.viewport.Height = m.viewportHeight()
 		m.viewport.GotoBottom()
 		return m, nil
@@ -216,9 +220,19 @@ func (m ChatModel) View() string {
 		return helpText
 	}
 
-	// Only adjust height for this render — do NOT call SetContent or GotoBottom
-	// here, as that would override the scroll offset preserved in Update().
-	m.viewport.Height = m.viewportHeight()
+	maxVP := m.viewportHeight()
+
+	// Shrink the viewport to content size when content is shorter than maxVP.
+	// This keeps the input right below the messages instead of pinning it to
+	// the bottom of the terminal.
+	vpH := m.vpLines
+	if vpH > maxVP {
+		vpH = maxVP
+	}
+	if vpH < 1 {
+		vpH = 1
+	}
+	m.viewport.Height = vpH
 
 	var sb strings.Builder
 	sb.WriteString(styledCompactHeader(m.width) + "\n")
@@ -264,6 +278,15 @@ func (m *ChatModel) viewportHeight() int {
 	}
 	return h
 }
+
+// setViewportContent renders the current messages into the viewport and
+// caches the line count so View() can size the viewport without re-rendering.
+func (m *ChatModel) setViewportContent() {
+	content := m.viewportContent()
+	m.viewport.SetContent(content)
+	m.vpLines = strings.Count(content, "\n") + 1
+}
+
 func (m *ChatModel) viewportContent() string {
 	if len(m.messages) == 0 {
 		return m.welcomeView()

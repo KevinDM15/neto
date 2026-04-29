@@ -111,7 +111,7 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 		msgs = append(msgs, toolResultMsg)
 		
 		// Persistir el resultado para que el historial lo refleje y el LLM lo vea
-		if err := uc.saveMessage(ctx, convID, entity.AIRoleToolUse, rawBlock); err != nil {
+		if err := uc.saveMessage(ctx, convID, entity.AIRoleAssistant, rawBlock); err != nil {
 			return ChatResponse{}, fmt.Errorf("chat: save tool result: %w", err)
 		}
 	} else {

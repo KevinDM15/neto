@@ -318,7 +318,7 @@ func (m ChatModel) sendConfirm(pending *client.PendingConfirmation) tea.Cmd {
 		resp, err := c.Chat(context.Background(), client.ChatRequest{
 			ConversationID: convID,
 			Confirm:        true,
-			PendingTool:    pending,
+			PendingTool:    pending.Block,
 		})
 		return chatResponseMsg{resp: resp, err: err}
 	}

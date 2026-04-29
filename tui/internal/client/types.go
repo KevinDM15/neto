@@ -20,6 +20,7 @@ type ChatRequest struct {
 type PendingConfirmation struct {
 	Tool    string                 `json:"tool"`
 	Preview map[string]interface{} `json:"preview"`
+	Block   interface{}            `json:"block"`
 }
 
 // ChatResponse is the response from POST /api/v1/chat.

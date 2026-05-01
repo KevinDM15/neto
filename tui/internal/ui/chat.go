@@ -16,17 +16,6 @@ import (
 	"github.com/neto-app/neto/tui/internal/config"
 )
 
-const helpText = `
-Comandos de ejemplo:
-  Gasté 50k en luz          — registrar gasto
-  ¿Cuánto gasté este mes?   — consultar gastos
-  Mostrar cuentas           — listar cuentas
-  ¿Cuánto debo?             — ver deudas
-  Meta de ahorro 100k       — crear meta
-
-Enter envía  •  Alt+Enter nueva línea  •  Ctrl+H ayuda  •  Ctrl+Q salir
-`
-
 // maxInputLines is the maximum number of visible lines in the textarea.
 const maxInputLines = 4
 
@@ -46,7 +35,6 @@ type ChatModel struct {
 	spinner        spinner.Model
 	loading        bool
 	err            string
-	showHelp       bool
 	conversationID string
 	confirm        *ConfirmModel
 	width          int
@@ -56,7 +44,9 @@ type ChatModel struct {
 // NewChatModel creates a new ChatModel.
 func NewChatModel(c *client.Client, cfg *config.Config) ChatModel {
 	ta := textarea.New()
-	ta.Placeholder = "Escribe un mensaje… (Enter envía, Alt+Enter nueva línea)"
+	// Clean prompt input style — just a ">" prefix
+	ta.Prompt = "> "
+	ta.Placeholder = ""
 	ta.ShowLineNumbers = false
 	ta.SetHeight(1)
 
@@ -64,9 +54,12 @@ func NewChatModel(c *client.Client, cfg *config.Config) ChatModel {
 	noStyle := lipgloss.NewStyle()
 	ta.FocusedStyle.Base = noStyle
 	ta.FocusedStyle.CursorLine = noStyle
+	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
 	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
 	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
+
 	ta.BlurredStyle.Base = noStyle
+	ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
 	ta.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
 	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
 
@@ -130,12 +123,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q":
 			return m, tea.Quit
-		case "ctrl+h":
-			m.showHelp = !m.showHelp
-			return m, nil
 		case "esc":
 			m.err = ""
-			m.showHelp = false
 			return m, nil
 		case "alt+enter":
 			var taCmd tea.Cmd
@@ -185,11 +174,11 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Viewport scrolling — preserves YOffset between renders.
+	// Viewport scrolling preserves YOffset between renders.
 	var vpCmd tea.Cmd
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
-	// Input — grow height as user types, up to maxInputLines.
+	// Input height grows as user types, up to maxInputLines.
 	var taCmd tea.Cmd
 	if !m.loading {
 		m.input, taCmd = m.input.Update(msg)
@@ -208,61 +197,77 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 //
-// Fixed layout (never shifts regardless of loading state):
+// Layout:
 //
-//	header\n           1
-//	sep\n              1
-//	viewport           viewportHeight()  ← always fills available space
-//	sep\n              1
-//	status\n           1  ← always 1 row: spinner | error | empty
-//	input              inputLines
-//	\n                 1
-//	sep                1
+//	header line               1
+//	viewport                  viewportHeight()
+//	separator line            1
+//	input prompt + textarea   inputLines
+//	separator line            1
+//	status bar                1
 //
-// Total chrome = 6 + inputLines (constant for a given input size).
+// Total chrome = 4 + inputLines
 func (m ChatModel) View() string {
-	if m.showHelp {
-		return helpText
-	}
-
-	// Viewport height is constant for given inputLines — no resize on spinner.
+	// Viewport height is constant for given inputLines
 	m.viewport.Height = m.viewportHeight()
 
 	var sb strings.Builder
-	sb.WriteString(styledCompactHeader(m.width) + "\n")
-	sb.WriteString(styledSeparator(m.width) + "\n")
-	sb.WriteString(m.viewport.View())
-	sb.WriteString(styledSeparator(m.width) + "\n")
+	sb.WriteString(styledHeader(m.width) + "\n")
 
-	// Status line — always exactly 1 row so the layout never shifts.
+	// If no messages, render the welcome box inside the viewport area
+	if len(m.messages) == 0 {
+		wb := styledWelcomeBox(m.width, m.cfg.APIURL)
+		// Pad top so it's roughly centered vertically
+		topPad := (m.viewport.Height - lipgloss.Height(wb)) / 2
+		if topPad < 0 {
+			topPad = 0
+		}
+		sb.WriteString(strings.Repeat("\n", topPad))
+		sb.WriteString(wb)
+		// Fill remaining viewport height
+		rem := m.viewport.Height - topPad - lipgloss.Height(wb)
+		if rem > 0 {
+			sb.WriteString(strings.Repeat("\n", rem))
+		}
+	} else {
+		sb.WriteString(m.viewport.View())
+	}
+
+	sb.WriteString("\n" + styledSeparator(m.width) + "\n")
+
 	if m.confirm != nil {
 		sb.WriteString(m.confirm.View())
 		return sb.String()
 	}
+
+	sb.WriteString(m.input.View() + "\n")
+	sb.WriteString(styledSeparator(m.width) + "\n")
+
+	// Status Bar
+	left := ""
 	switch {
 	case m.loading:
-		sb.WriteString(fmt.Sprintf(" %s  pensando...\n", m.spinner.View()))
+		left = styleHint.Render(fmt.Sprintf("%s pensando...", m.spinner.View()))
 	case m.err != "":
-		sb.WriteString(styleError.Render(fmt.Sprintf(" ⚠ %s  (Esc)", m.err)) + "\n")
+		left = styleError.Render(fmt.Sprintf("⚠ %s (Esc)", m.err))
 	default:
-		sb.WriteString("\n")
+		left = styleHint.Render("Lista")
 	}
 
-	sb.WriteString(m.input.View())
-	sb.WriteString("\n")
-	sb.WriteString(styledSeparator(m.width))
+	right := styleHint.Render("openai/gpt-oss-20b · free")
+	sb.WriteString(styledStatusBar(m.width, left, right))
+
 	return sb.String()
 }
 
 // viewportHeight returns the number of rows the viewport should occupy.
-// chrome = header(1) + sep(1) + sep(1) + status(1) + input(n) + blank(1) + sep(1) = 6 + n
-// This value is CONSTANT for a given inputLines — it never depends on m.loading.
+// chrome = header(1) + sep(1) + input(n) + sep(1) + status(1) = 4 + n
 func (m *ChatModel) viewportHeight() int {
 	inputLines := strings.Count(m.input.Value(), "\n") + 1
 	if inputLines > maxInputLines {
 		inputLines = maxInputLines
 	}
-	h := m.height - 6 - inputLines
+	h := m.height - 4 - inputLines
 	if h < 1 {
 		h = 1
 	}
@@ -271,22 +276,19 @@ func (m *ChatModel) viewportHeight() int {
 
 // viewportContent builds the message history string rendered inside the viewport.
 func (m *ChatModel) viewportContent() string {
-	if len(m.messages) == 0 {
-		return m.welcomeView()
-	}
 	var sb strings.Builder
 	for i, msg := range m.messages {
 		if i > 0 {
-			sb.WriteString("\n") // blank line between messages
+			sb.WriteString("\n\n") // more breathing room between messages
 		}
 		if msg.role == "user" {
-			line := styleUserMsg.Render("> " + msg.content)
+			line := styleUserMsg.Render(msg.content)
 			if m.width > 0 {
-				pad := m.width - lipgloss.Width(line) - 1
+				pad := m.width - lipgloss.Width(line) - 2 // -2 for right padding
 				if pad < 0 {
 					pad = 0
 				}
-				sb.WriteString(strings.Repeat(" ", pad) + line + "\n")
+				sb.WriteString(strings.Repeat(" ", pad) + line + "  \n")
 			} else {
 				sb.WriteString(line + "\n")
 			}
@@ -330,7 +332,6 @@ func (m *ChatModel) appendMsg(role, content string) {
 }
 
 // renderMarkdown renders markdown text for terminal display.
-// Falls back to plain text if glamour fails.
 func renderMarkdown(content string, width int) string {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylePath("dark"),
@@ -343,14 +344,5 @@ func renderMarkdown(content string, width int) string {
 	if err != nil {
 		return content
 	}
-	// TrimSpace removes the leading and trailing blank lines glamour adds,
-	// giving a cleaner look consistent with typical terminal chat UIs.
 	return strings.TrimSpace(out)
-}
-
-// welcomeView returns the logo shown at the top when the chat has no messages yet.
-func (m *ChatModel) welcomeView() string {
-	art := lipgloss.NewStyle().Foreground(colorAccent).Render(logo)
-	sub := styleHeaderSub.Render("  personal finance · AI-powered")
-	return art + "\n" + sub
 }

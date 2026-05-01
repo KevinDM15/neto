@@ -23,8 +23,8 @@ type ChatRequest struct {
 
 // PendingConfirmationResponse contiene los datos de un tool que requiere confirmación.
 type PendingConfirmationResponse struct {
-	Tool    string          `json:"tool"`
-	Preview json.RawMessage `json:"preview"`
+	Tool    string           `json:"tool"`
+	Preview json.RawMessage  `json:"preview"`
 	Block   *ai.ContentBlock `json:"block"`
 }
 
@@ -84,20 +84,20 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 	// Si hay un pending tool siendo confirmado, ejecutarlo y reinyectar el estado previo
 	if req.Confirm && req.PendingTool != nil {
 		msgs = history
-		
+
 		// Ejecutar el tool manualmente ya que el usuario lo confirmó
 		resultJson, _, err := executorFn(ctx, req.PendingTool)
 		if err != nil {
 			return ChatResponse{}, fmt.Errorf("chat: execute confirmed tool %q: %w", req.PendingTool.Name, err)
 		}
-		
+
 		// Armar el mensaje de tool result
 		toolResultBlock := ai.ContentBlock{
 			Type:      "tool_result",
 			ToolUseID: req.PendingTool.ID,
 			Content:   resultJson,
 		}
-		
+
 		rawBlock, err := json.Marshal([]ai.ContentBlock{toolResultBlock})
 		if err != nil {
 			return ChatResponse{}, fmt.Errorf("chat: marshal tool result: %w", err)
@@ -107,9 +107,9 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 			Role:    ai.RoleTool,
 			Content: rawBlock,
 		}
-		
+
 		msgs = append(msgs, toolResultMsg)
-		
+
 		// Persistir el resultado para que el historial lo refleje y el LLM lo vea
 		if err := uc.saveMessage(ctx, convID, entity.AIRoleAssistant, rawBlock); err != nil {
 			return ChatResponse{}, fmt.Errorf("chat: save tool result: %w", err)

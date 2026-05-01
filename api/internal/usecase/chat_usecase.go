@@ -25,6 +25,7 @@ type ChatRequest struct {
 type PendingConfirmationResponse struct {
 	Tool    string          `json:"tool"`
 	Preview json.RawMessage `json:"preview"`
+	Block   *ai.ContentBlock `json:"block"`
 }
 
 // ChatResponse es la respuesta del agente al usuario.
@@ -74,13 +75,45 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 		return ChatResponse{}, fmt.Errorf("chat: load history: %w", err)
 	}
 
+	// Ejecutar el loop de tool use
+	executorFn := uc.executor.BuildExecutorFunc(userID, req.Confirm)
+
 	// Construir el mensaje del usuario
 	var msgs []ai.Message
 
-	// Si hay un pending tool siendo confirmado, reinyectar el estado previo
+	// Si hay un pending tool siendo confirmado, ejecutarlo y reinyectar el estado previo
 	if req.Confirm && req.PendingTool != nil {
 		msgs = history
-		// El pending tool ya está en el historial — continuamos el loop con confirmed=true
+		
+		// Ejecutar el tool manualmente ya que el usuario lo confirmó
+		resultJson, _, err := executorFn(ctx, req.PendingTool)
+		if err != nil {
+			return ChatResponse{}, fmt.Errorf("chat: execute confirmed tool %q: %w", req.PendingTool.Name, err)
+		}
+		
+		// Armar el mensaje de tool result
+		toolResultBlock := ai.ContentBlock{
+			Type:      "tool_result",
+			ToolUseID: req.PendingTool.ID,
+			Content:   resultJson,
+		}
+		
+		rawBlock, err := json.Marshal([]ai.ContentBlock{toolResultBlock})
+		if err != nil {
+			return ChatResponse{}, fmt.Errorf("chat: marshal tool result: %w", err)
+		}
+
+		toolResultMsg := ai.Message{
+			Role:    ai.RoleTool,
+			Content: rawBlock,
+		}
+		
+		msgs = append(msgs, toolResultMsg)
+		
+		// Persistir el resultado para que el historial lo refleje y el LLM lo vea
+		if err := uc.saveMessage(ctx, convID, entity.AIRoleAssistant, rawBlock); err != nil {
+			return ChatResponse{}, fmt.Errorf("chat: save tool result: %w", err)
+		}
 	} else {
 		// Mensaje nuevo del usuario
 		userMsg, err := ai.NewTextMessage(ai.RoleUser, req.Message)
@@ -95,8 +128,6 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 		}
 	}
 
-	// Ejecutar el loop de tool use
-	executorFn := uc.executor.BuildExecutorFunc(userID, req.Confirm)
 	result, err := uc.llm.RunToolLoop(ctx, msgs, uc.tools, executorFn)
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("chat: run tool loop: %w", err)
@@ -114,6 +145,7 @@ func (uc *ChatUseCase) Chat(ctx context.Context, userID uuid.UUID, req ChatReque
 		resp.PendingConfirmation = &PendingConfirmationResponse{
 			Tool:    result.PendingConfirmation.Name,
 			Preview: result.PendingConfirmation.Input,
+			Block:   result.PendingConfirmation,
 		}
 		return resp, nil
 	}
